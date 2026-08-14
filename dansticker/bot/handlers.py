@@ -27,7 +27,7 @@ from dansticker.jobs.processor import process_job, cleanup_job
 from dansticker.logger import get_logger
 from dansticker.storage.db import get_preferred_author, save_user_preferences
 from dansticker.telegram.downloader import TelegramDownloader
-from dansticker.telegram.pack_resolver import parse_pack_url, is_pack_url
+from dansticker.telegram.pack_resolver import parse_pack_url, is_pack_url, build_pack_url
 from dansticker.types import Job
 
 log = get_logger("bot.handlers")
@@ -73,7 +73,6 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     current = await get_preferred_author(user_id)
-    # Use a sentinel session for settings flow
     sentinel_id = f"settings_{user_id}"
     from dansticker.types import StickerPack, PackType
     fake_pack = StickerPack(
@@ -105,13 +104,34 @@ async def cmd_convert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await _handle_pack_url(update, context, url)
 
 
-# ── Plain URL messages ─────────────────────────────────────────────────────────
+# ── Sticker message — auto-fetch the pack ─────────────────────────────────────
+
+async def msg_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    User forwards/sends any sticker → extract its set name → start the flow.
+    Stickers that don't belong to a set (custom emoji etc.) are ignored gracefully.
+    """
+    sticker = update.message.sticker
+    set_name = sticker.set_name if sticker else None
+
+    if not set_name:
+        await update.message.reply_text(
+            "This sticker doesn't belong to a pack \\(or it's a custom emoji\\)\\.",
+            parse_mode=MD,
+        )
+        return
+
+    url = build_pack_url(set_name)
+    await _handle_pack_url(update, context, url)
+
+
+# ── Plain URL / text messages ──────────────────────────────────────────────────
 
 async def msg_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text.strip()
     user_id = update.effective_user.id
 
-    # Check if we're waiting for user input
+    # Check if we're waiting for user input (customize flow)
     session = get_session_by_user(user_id)
     if session and session.awaiting_input:
         await _handle_awaiting_input(update, context, session, text)
@@ -278,7 +298,6 @@ async def _start_conversion(
         author=session.author,
     )
 
-    # Edit to show first progress message
     progress_message = await context.bot.send_message(
         chat_id,
         progress_msg(session.pack_name, "Downloading", 0, len(session.pack.stickers)),
@@ -288,9 +307,9 @@ async def _start_conversion(
 
     stage_labels = {
         "downloading": "Downloading",
-        "converting": "Converting",
-        "validating": "Validating",
-        "packaging": "Packaging",
+        "converting":  "Converting",
+        "validating":  "Validating",
+        "packaging":   "Packaging",
     }
     last_text = [""]
 
@@ -327,7 +346,6 @@ async def _start_conversion(
         delete_session(session.job_id)
         return
 
-    # Stash paths for download button
     session.output_paths = result.output_paths
 
     finish_text = completion_msg(
@@ -343,7 +361,7 @@ async def _start_conversion(
         reply_markup=download_keyboard(result.output_paths, session.job_id),
     )
 
-    # Also send files directly
+    # Send files directly
     for i, path in enumerate(result.output_paths):
         if os.path.exists(path):
             caption = session.pack_name + (
@@ -356,7 +374,6 @@ async def _start_conversion(
                 caption=caption,
             )
 
-    # Schedule cleanup after 5 min
     async def _deferred_cleanup():
         await asyncio.sleep(300)
         delete_session(session.job_id)
@@ -373,5 +390,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("settings", cmd_settings))
     app.add_handler(CommandHandler("convert", cmd_convert))
+    # Sticker sent by user → auto-detect the pack
+    app.add_handler(MessageHandler(filters.Sticker.ALL, msg_sticker))
+    # Plain text / URLs
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, msg_text))
     app.add_handler(CallbackQueryHandler(callback_handler))

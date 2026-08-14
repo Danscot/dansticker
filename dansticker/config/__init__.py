@@ -40,7 +40,7 @@ class Config:
     MAX_SINGLE_STICKER_SIZE: int = _opt_int("MAX_SINGLE_STICKER_SIZE", 10_485_760)
     MAX_DOWNLOAD_SIZE: int = _opt_int("MAX_DOWNLOAD_SIZE", 209_715_200)
     MAX_VIDEO_DURATION: float = _opt_float("MAX_VIDEO_DURATION", 8.0)
-    MAX_OUTPUT_SIZE: int = _opt_int("MAX_OUTPUT_SIZE", 512_000)
+    MAX_OUTPUT_SIZE: int = _opt_int("MAX_OUTPUT_SIZE", 750_000)
     MAX_JOB_RUNTIME: int = _opt_int("MAX_JOB_RUNTIME", 600)
     MAX_FFMPEG_TIMEOUT: int = _opt_int("MAX_FFMPEG_TIMEOUT", 120)
     TARGET_WIDTH: int = 512

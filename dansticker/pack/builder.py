@@ -28,22 +28,42 @@ class BuildResult:
     reason: Optional[str] = None
 
 
-def _safe_name(name: str) -> str:
-    """Make a filesystem-safe filename from pack name."""
-    clean = re.sub(r"[^\w\s\-]", "", name).strip()
-    return re.sub(r"\s+", "_", clean)[:64] or "pack"
+def _safe(text: str) -> str:
+    """Filesystem-safe slug from arbitrary text."""
+    clean = re.sub(r"[^\w\s\-]", "", text).strip()
+    return re.sub(r"\s+", "_", clean)[:48] or "pack"
+
+
+def _build_filename(pack: WhatsAppPack) -> str:
+    """
+    Construct a descriptive filename without touching the display name.
+
+    Examples:
+      FunnyCats.wastickers
+      FunnyCats_static.wastickers
+      FunnyCats_animated.wastickers
+      FunnyCats_static_part2.wastickers
+      FunnyCats_animated_part1.wastickers
+    """
+    parts = [_safe(pack.name)]
+
+    if pack._group:
+        parts.append(pack._group)
+
+    if pack._chunk_total > 1:
+        parts.append(f"part{pack._chunk_index + 1}")
+
+    return "_".join(parts) + ".wastickers"
 
 
 def build_wastickers(pack: WhatsAppPack, output_dir: str, pack_dir: str) -> BuildResult:
     """
     Build a .wastickers file (synchronous — call from thread pool).
 
-    Structure inside the ZIP:
+    ZIP contents (all at root level):
         thumbnail.png
-        sticker_001.webp
-        sticker_002.webp
-        ...
-        title.txt
+        sticker_001.webp  …
+        title.txt         ← clean pack name, no suffixes
         author.txt
         link.txt
         info.json
@@ -53,8 +73,7 @@ def build_wastickers(pack: WhatsAppPack, output_dir: str, pack_dir: str) -> Buil
     output_dir_p.mkdir(parents=True, exist_ok=True)
     pack_dir_p.mkdir(parents=True, exist_ok=True)
 
-    safe = _safe_name(pack.name)
-    filename = f"{safe}_part{pack.part_index}.wastickers"
+    filename = _build_filename(pack)
     output_path = str(output_dir_p / filename)
 
     try:
@@ -66,19 +85,17 @@ def build_wastickers(pack: WhatsAppPack, output_dir: str, pack_dir: str) -> Buil
         if thumb_source and os.path.exists(thumb_source):
             generate_thumbnail(thumb_source, thumb_dest)
         else:
-            # Blank white thumbnail
             from PIL import Image
             Image.new("RGB", (96, 96), (255, 255, 255)).save(thumb_dest, "PNG")
 
-        # 2 – Stickers (rename sequentially)
+        # 2 – Stickers (sequential names)
         for i, sticker in enumerate(pack.stickers):
             if not sticker.output_path or not os.path.exists(sticker.output_path):
                 log.warning(f"Sticker {sticker.index} missing output, skipping")
                 continue
-            dest_name = f"sticker_{i + 1:03d}.webp"
-            shutil.copy2(sticker.output_path, pack_dir_p / dest_name)
+            shutil.copy2(sticker.output_path, pack_dir_p / f"sticker_{i + 1:03d}.webp")
 
-        # 3 – Metadata text files
+        # 3 – Metadata — always the clean name, never the filename
         (pack_dir_p / "title.txt").write_text(pack.name, encoding="utf-8")
         (pack_dir_p / "author.txt").write_text(pack.author, encoding="utf-8")
         (pack_dir_p / "link.txt").write_text(pack.source_url, encoding="utf-8")
@@ -90,7 +107,7 @@ def build_wastickers(pack: WhatsAppPack, output_dir: str, pack_dir: str) -> Buil
             json.dumps(info, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 
-        # 5 – ZIP → .wastickers (files at root, no subdirectory)
+        # 5 – ZIP → .wastickers
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
             for item in sorted(pack_dir_p.iterdir()):
                 if item.is_file():

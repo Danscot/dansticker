@@ -1,5 +1,6 @@
 import pytest
 from dansticker.pack.splitter import split_into_wa_packs
+from dansticker.pack.builder import _build_filename
 from dansticker.types import StickerPack, Sticker, StickerSourceType, StickerStatus, PackType
 
 
@@ -65,11 +66,36 @@ def test_part_numbers():
     assert result[0].total_parts == 2
 
 
-def test_name_contains_part():
+def test_display_name_never_has_suffix():
+    """Pack name shown to user must always be clean — no Part/Static/Animated."""
+    pack = make_pack([{}] * 47)
+    for wa_pack in split_into_wa_packs(pack):
+        assert "Part" not in wa_pack.name
+        assert "Static" not in wa_pack.name
+        assert "Animated" not in wa_pack.name
+        assert wa_pack.name == "Test Pack"
+
+
+def test_filename_has_part_suffix():
+    """Filename (not display name) carries the part/chunk info."""
     pack = make_pack([{}] * 47)
     result = split_into_wa_packs(pack)
-    assert "Part 1" in result[0].name
-    assert "Part 2" in result[1].name
+    fn0 = _build_filename(result[0])
+    fn1 = _build_filename(result[1])
+    assert "part1" in fn0
+    assert "part2" in fn1
+    assert fn0.endswith(".wastickers")
+    assert fn1.endswith(".wastickers")
+
+
+def test_mixed_pack_filenames_have_type():
+    """Static/animated groups get type label in filename when both exist."""
+    specs = [{"animated": False}] * 5 + [{"animated": True}] * 5
+    pack = make_pack(specs)
+    result = split_into_wa_packs(pack)
+    filenames = [_build_filename(p) for p in result]
+    assert any("static" in fn for fn in filenames)
+    assert any("animated" in fn for fn in filenames)
 
 
 def test_empty_pack():

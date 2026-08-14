@@ -75,13 +75,17 @@ class StickerPack:
 
 @dataclass
 class WhatsAppPack:
-    name: str
+    name: str           # always the clean user-chosen name — no suffixes
     author: str
     stickers: List[Sticker]
     source_url: str
     thumbnail_path: Optional[str] = None
     part_index: int = 1
     total_parts: int = 1
+    # Used by the builder to construct a descriptive filename — never shown to user
+    _group: str = ""          # "static" | "animated" | ""
+    _chunk_index: int = 0     # 0-based chunk within group
+    _chunk_total: int = 1     # total chunks in this group
 
 
 @dataclass
