@@ -1,0 +1,21 @@
+version: '3.9'
+
+services:
+  dansticker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - dansticker_work:/app/work
+      - dansticker_data:/app/data
+      - dansticker_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  dansticker_work:
+  dansticker_data:
+  dansticker_logs:

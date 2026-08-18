@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+work/
+data/
+logs/
+*.wastickers
+*.tgs
+*.webm
+.venv/
+venv/
+dist/
+*.egg-info/

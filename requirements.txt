@@ -1,0 +1,10 @@
+python-telegram-bot
+httpx
+Pillow
+aiofiles
+aiosqlite
+lottie
+python-dotenv
+pytest
+pytest-asyncio
+
