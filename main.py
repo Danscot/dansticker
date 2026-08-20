@@ -1,7 +1,5 @@
 """Dansticker bot entry point."""
-from __future__ import annotations
 import asyncio
-import logging
 from pathlib import Path
 
 from telegram.ext import Application
@@ -15,25 +13,32 @@ from dansticker.storage.db import get_db, close_db
 log = get_logger("main")
 
 
-async def main() -> None:
+async def post_init(app: Application) -> None:
+    """Called by PTB after the event loop is running — safe to do async work here."""
+    await get_db()
+    asyncio.create_task(start_periodic_cleanup())
+    log.info("Dansticker is running")
+
+
+def main() -> None:
     # Ensure directories exist
     for d in (cfg.WORK_DIR, cfg.LOG_DIR, cfg.DB_PATH.parent):
         Path(d).mkdir(parents=True, exist_ok=True)
 
-    # Init database
-    await get_db()
-
     log.info("Starting Dansticker bot...")
 
-    app = Application.builder().token(cfg.TELEGRAM_BOT_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(cfg.TELEGRAM_BOT_TOKEN)
+        .post_init(post_init)
+        .build()
+    )
+
     register_handlers(app)
 
-    # Background cleanup task
-    asyncio.create_task(start_periodic_cleanup())
-
-    log.info("Dansticker is running")
-    await app.run_polling(drop_pending_updates=True)
+    # PTB v20+ manages its own event loop — do NOT wrap in asyncio.run()
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
